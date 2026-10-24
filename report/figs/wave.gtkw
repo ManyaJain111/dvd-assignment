@@ -1,0 +1,16 @@
+[dumpfile] "../../mult.vcd"
+[timestart] 5490000
+[size] 1500 560
+[pos] 0 0
+*-13.700000 5520000 5525000 5535000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[sst_expanded] 0
+[signals_width] 230
+@28
+tb_mult.clk
+tb_mult.rst_n
+@24
+tb_mult.a[3:0]
+tb_mult.b[3:0]
+tb_mult.dut.a_r[3:0]
+tb_mult.dut.b_r[3:0]
+tb_mult.p[7:0]
