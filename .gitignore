@@ -1,0 +1,14 @@
+# Simulation outputs
+sim
+gls
+*.vcd
+
+# LibreLane run directories (very large)
+pnr/runs/
+
+# Tool scratch files
+abc.history
+
+# Course material / local notes (not part of the submission layout)
+AGENTS.md
+RTL_to_GDS*.pdf
