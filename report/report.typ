@@ -7,28 +7,36 @@
 #set par(justify: true)
 #set heading(numbering: "1.")
 #show raw: set text(font: "DejaVu Sans Mono", size: 8.5pt)
-#show heading.where(level: 1): it => { v(0.6em); it; v(0.2em) }
+#show heading.where(level: 1): it => {
+  v(0.6em)
+  it
+  v(0.2em)
+}
 #set table(stroke: 0.5pt + luma(150), inset: 5pt)
 #show table.cell.where(y: 0): set text(weight: "bold")
 
 #align(center)[
   #text(17pt, weight: "bold")[4-bit Array Multiplier from RTL to GDSII] \
   #v(0.2em)
-  #text(12pt)[Digital VLSI Design — SkyWater SKY130 (`sky130_fd_sc_hd`)] \
+  #text(12pt)[Digital VLSI Design: SkyWater SKY130 (`sky130_fd_sc_hd`)] \
   #v(0.6em)
   #table(
-    columns: 2, align: left,
+    columns: 2,
+    align: left,
     [Name], [Roll number],
     [Gopal], [2023112006],
     [Manya], [2024102068],
   )
+  #v(0.3em)
+  Repository: #link("https://github.com/ManyaJain111/dvd-assignment")[`github.com/ManyaJain111/dvd-assignment`]
 ]
 
-All steps were run in the IIC-OSIC-TOOLS Docker image (Icarus Verilog 14.0 (devel), Yosys 0.70,
-OpenSTA 3.1.0, LibreLane, KLayout) with the `sky130A` PDK. The exact commands, in order, are listed in
+All steps were run in the IIC-OSIC-TOOLS Docker image [5] (Icarus Verilog 14.0 (devel) [6],
+Yosys 0.70 [8], OpenSTA 3.1.0 [9], LibreLane [10], KLayout [13]) with the `sky130A` PDK [4], following
+the assignment handout [1]. The array structure follows the textbook array multiplier [2, 3]. The exact commands, in order, are listed in
 `README.md`.
 
-= Part A — RTL design and verification
+= Part A: RTL design and verification
 
 `rtl/full_adder.v` implements `sum = a ^ b ^ cin` and `cout = ab + a·cin + b·cin` with `assign`
 statements only. `rtl/mult_array.v` registers `a` and `b` into `a_r`/`b_r` (8 flip-flops), forms the
@@ -40,7 +48,7 @@ used. Figure 1 shows the block diagram.
 #figure(
   image("figs/block_diagram.png", width: 100%),
   caption: [Block diagram: 16 AND gates (orange), 12 full adders (blue), input registers
-  `a_r`, `b_r` and output register `p` (green, 16 flip-flops in total).],
+    `a_r`, `b_r` and output register `p` (green, 16 flip-flops in total).],
 )
 
 The self-checking testbench `tb/tb_mult.v` uses a 10 ns clock, holds `rst_n` low for two cycles,
@@ -48,7 +56,8 @@ applies all 256 input pairs on the falling edge, waits for two rising edges (the
 and compares `p` with `a*b` on the next falling edge.
 
 #table(
-  columns: (auto, 1fr), align: left,
+  columns: (auto, 1fr),
+  align: left,
   [Run], [Summary line],
   [RTL simulation], [`PASS: 256 vectors checked, 0 errors`],
   [Error test (`sum = a ^ b`)], [`FAIL: 256 vectors checked, 95 errors`],
@@ -86,17 +95,18 @@ Through the array rows (Section 2 equations):
 #figure(
   image("figs/waveform_11x7.png", width: 100%),
   caption: [GTKWave view of the RTL simulation for A = 11, B = 7. The inputs change at 5520 ns
-  (red marker), are captured into `a_r`/`b_r` at clock edge 1 (5525 ns, marker A), and the
-  product `p = 77` is registered at clock edge 2 (5535 ns, marker B): a latency of 2 clock edges.],
+    (red marker), are captured into `a_r`/`b_r` at clock edge 1 (5525 ns, marker A), and the
+    product `p = 77` is registered at clock edge 2 (5535 ns, marker B): a latency of 2 clock edges.],
 )
 
-= Part B — Logic synthesis with Yosys
+= Part B: Logic synthesis with Yosys
 
 `synth/synth.tcl` runs `read_verilog`, `synth -top mult_array -flatten`, `dfflibmap`, `abc`,
 `opt_clean -purge`, `stat` and `write_verilog` with the typical-corner Liberty file.
 
 #table(
-  columns: (1fr, 1fr), align: left,
+  columns: (1fr, 1fr),
+  align: left,
   [Metric], [Value],
   [Total number of cells], [61],
   [Number of flip-flops], [16 (`sky130_fd_sc_hd__dfrtp_1`)],
@@ -107,13 +117,14 @@ Through the array rows (Section 2 equations):
   [Netlist simulation result], [`PASS: 256 vectors checked, 0 errors`],
 )
 
-= Part C — Static timing analysis with OpenSTA
+= Part C: Static timing analysis with OpenSTA
 
 `sta/sta.tcl` uses the typical corner (`tt_025C_1v80`), 1.0 ns input and output delays, and a
 clock of period T (10 ns by default; overridden with the `STA_PERIOD` environment variable).
 
 #table(
-  columns: (1fr, 1fr), align: left,
+  columns: (1fr, 1fr),
+  align: left,
   [Metric], [Value],
   [Worst slack at T = 10 ns], [7.213 ns],
   [T#sub[min]], [10 − 7.213 = 2.787 ns],
@@ -129,7 +140,8 @@ clock of period T (10 ns by default; overridden with the `STA_PERIOD` environmen
 Critical path at T = 10 ns (from `sta/mult_array_timing.rpt`):
 
 #table(
-  columns: (auto, auto, auto, auto, 1fr), align: (center, left, right, right, left),
+  columns: (auto, auto, auto, auto, 1fr),
+  align: (center, left, right, right, left),
   [\#], [Cell], [Delay (ns)], [Arrival (ns)], [Origin],
   [1], [`dfrtp_1` (`a_r[1]`)], [0.398], [0.398], [input register, clock-to-Q],
   [2], [`clkinv_1`], [0.073], [0.471], [partial-product logic],
@@ -149,7 +161,7 @@ estimated in Section 2. However, each level is a single library gate rather than
 two-gate full adder, because ABC uses `maj3`/`xor3` cells that implement a whole carry or sum in
 one gate.
 
-= Part D — Physical design with LibreLane
+= Part D: Physical design with LibreLane
 
 `pnr/config.json` sets `DESIGN_NAME`, `VERILOG_FILES`, `CLOCK_PORT`, `FP_SIZING = "absolute"`,
 `DIE_AREA = [0, 0, 150, 150]` and `CLOCK_PERIOD`. The starting period was 1.2 × 2.787 = 3.344 ns,
@@ -157,7 +169,8 @@ rounded up to 3.5 ns. LibreLane signs off setup timing in nine PVT corners; the 
 (`ss_100C_1v60`) was always the worst one. The period was raised by 0.5 ns after every failed run:
 
 #table(
-  columns: (auto, auto, auto, auto, auto, auto), align: center,
+  columns: (auto, auto, auto, auto, auto, auto),
+  align: center,
   [Run], [CLOCK_PERIOD (ns)], [Worst setup slack (ns)], [tt-corner slack (ns)], [DRC / LVS], [Result],
   [1], [3.5], [−2.546], [+0.431], [0 / 0], [setup fail],
   [2], [4.0], [−2.027], [+0.929], [0 / 0], [setup fail],
@@ -177,7 +190,8 @@ synthesis and repair steps chose a slower netlist, and the resizer inserted slow
 buffers alone added about 1.2 ns to the critical path.
 
 #table(
-  columns: (1fr, 1.4fr), align: left,
+  columns: (1fr, 1.4fr),
+  align: left,
   [Metric], [Value],
   [CLOCK_PERIOD used (ns)], [8.0],
   [Number of runs needed], [10],
@@ -187,6 +201,7 @@ buffers alone added about 1.2 ns to the critical path.
   [Kinds of cells added],
   [245 `tapvpwrvgnd_1` (tap) · 1299 `decap_3/4/6/8/12` · 254 `fill_1/2` ·
     17 `buf_2` (I/O buffers) · 3 `clkbuf_16` (clock tree) · 4 `clkdlybuf4s25/50_1` (repair)],
+
   [Wirelength (µm)], [2518 (routed)],
   [Setup slack (ns)], [+0.362 (worst corner, `max_ss_100C_1v60`)],
   [Post-route F#sub[max] (MHz)], [1000 / (8.0 − 0.362) = 130.9],
@@ -202,14 +217,14 @@ itself and got one more cell than Part B), 24 buffers, 245 tap cells and 1553 fi
 #figure(
   image("figs/layout_die.png", width: 78%),
   caption: [Final layout in KLayout: the whole 150 µm × 150 µm die with the I/O pins, power grid
-  and standard cell rows. The logic sits in the middle; the rest of the rows are filled with
-  decap and fill cells.],
+    and standard cell rows. The logic sits in the middle; the rest of the rows are filled with
+    decap and fill cells.],
 )
 
 #figure(
   image("figs/layout_zoom.png", width: 100%),
   caption: [Zoomed view (about 30 µm × 20 µm near the centre of the core): horizontal standard cell
-  rows with their power rails, the placed cells, and metal 1/metal 2 routing with vias.],
+    rows with their power rails, the placed cells, and metal 1/metal 2 routing with vias.],
 )
 
 = Answers to the questions
@@ -279,27 +294,50 @@ only linearly.
 
 #heading(numbering: none)[Division of work]
 
-The work was split evenly so that each member owned one half of every stage and checked the other's
-half. Each member wrote the parts of the report and the answers that cover their own work.
+The work was split by Gopal taking even part numbers and Manya taking odd part numbers. The table below shows the exact contributions. Report parts C and D were written together, while the rest of the report was written by the person who did that part.
 
 #table(
-  columns: (auto, 1fr, 1fr), align: left,
+  columns: (auto, 1fr, 1fr),
+  align: left,
   [Stage], [Gopal (2023112006)], [Manya (2024102068)],
   [Part A],
   [`rtl/full_adder.v` and `rtl/mult_array.v` (wiring the 12 full adders from the Section 2
     table); block diagram],
   [`tb/tb_mult.v` (exhaustive self-checking testbench); RTL simulation; error-injection test;
     hand-worked example and waveform screenshot],
+
   [Part B],
   [Reviewed the synthesised netlist against the RTL structure],
   [`synth/synth.tcl`; synthesis run; area table; netlist (gate-level) simulation],
+
   [Part C],
   [`sta/sta.tcl`; WNS, T#sub[min] and F#sub[max]; critical-path cell analysis],
   [Re-ran STA at T#sub[min] to confirm slack ≈ 0; latency and throughput figures],
+
   [Part D],
   [`pnr/config.json`; the ten LibreLane runs and the timing debugging between them],
   [Extracted metrics from `metrics.json`; pre/post place-and-route cell comparison; KLayout
     screenshots; DRC/LVS check],
+
   [Questions], [2, 4 and 6], [1, 3 and 5],
   [Write-up], [Parts C and D of the report], [Parts A and B of the report; `README.md` command log],
+)
+
+#heading(numbering: none)[Acknowledgements]
+
+We thank the course instructor and teaching assistants for the assignment and its step-by-step
+handout. We also thank the developers of the open-source tools and the SkyWater SKY130 PDK, and the
+IIC-OSIC-TOOLS team for packaging them into a single Docker image. Claude, an AI assistant made by
+Anthropic [15], helped with writing scripts, debugging the flow, and editing this report and the
+README. All results were produced by running the tools ourselves and were checked by the team.
+
+#heading(numbering: none)[References]
+
+#set par(justify: false)
+#set text(size: 9.5pt)
+#enum(
+  numbering: "[1]",
+  [Course handout, _RTL to GDSII: 4-bit Array Multiplier on SKY130_ (`RTL_to_GDS.pdf`), Digital VLSI Design, 2026.],
+  [N. H. E. Weste and D. M. Harris, _CMOS VLSI Design: A Circuits and Systems Perspective_, 4th ed., Addison-Wesley, 2011, ch. 11 (datapath subsystems: multiplication).],
+  [_Claude_, AI assistant, used to help understand the above. ],
 )

@@ -1,4 +1,8 @@
-# 4-bit Array Multiplier — RTL to GDSII (SKY130)
+# 4-bit Array Multiplier : RTL to GDSII (SKY130)
+
+A 4-bit × 4-bit unsigned array multiplier (16 AND gates, 12 full adders, 16 flip-flops,
+2-cycle latency) taken from Verilog RTL through simulation, Yosys synthesis, OpenSTA timing
+analysis and LibreLane place-and-route to a GDSII layout on SkyWater SKY130 (`sky130_fd_sc_hd`).
 
 ## Team
 
@@ -7,55 +11,89 @@
 | Gopal | 2023112006 |
 | Manya | 2024102068 |
 
-## Environment
+## Repository layout
 
-All steps were run in the IIC-OSIC-TOOLS Docker image (`hpretl/iic-osic-tools:latest`:
-Icarus Verilog 14.0 (devel), Yosys 0.70, OpenSTA 3.1.0, LibreLane, KLayout), with this
-repository mounted under `/foss/designs`. All commands are run from the repository root
-unless noted otherwise.
+```
+rtl/full_adder.v             full adder (assign statements only)
+rtl/mult_array.v             4x4 array multiplier, 12 full_adder instances
+tb/tb_mult.v                 exhaustive self-checking testbench (writes mult.vcd)
+synth/synth.tcl              Yosys script
+synth/mult_array_netlist.v   gate-level netlist           (generated)
+synth/mult_array_stat.rpt    cell and area report         (generated)
+sta/sta.tcl                  OpenSTA script
+sta/mult_array_timing.rpt    critical path report         (generated)
+pnr/config.json              LibreLane configuration
+pnr/metrics.json             metrics of the final LibreLane run
+pnr/mult_array.gds           final layout
+report/report.pdf            report (source: report/report.typ, figures in report/figs/)
+```
+
+## 0. Setup
+
+Everything runs in the IIC-OSIC-TOOLS Docker image (Icarus Verilog 14.0 (devel), Yosys 0.70,
+OpenSTA 3.1.0, LibreLane, KLayout). Give Docker at least 8 GB RAM and 4 CPUs.
+
+Start a shell in the container with this repository mounted:
 
 ```sh
+docker run -it --rm -v <path-to-this-repo>:/foss/designs/assignment \
+  hpretl/iic-osic-tools:latest --skip bash
+```
+
+Inside the container:
+
+```sh
+cd /foss/designs/assignment
+sak-pdk sky130A            # the image defaults to ihp-sg13g2
+echo $PDK_ROOT $PDK        # should print: /foss/pdks sky130A
 iverilog -V | head -1
 yosys -V
 sta -version
-echo $PDK_ROOT $PDK        # the image defaults to ihp-sg13g2, so:
-sak-pdk sky130A            # (equivalently: export PDK=sky130A)
 ```
 
-## Part A — RTL design and verification
+All commands below are run from the repository root inside the container, unless noted.
+
+## Part A : RTL simulation
+
+**Run**
 
 ```sh
 iverilog -g2012 -o sim tb/tb_mult.v rtl/full_adder.v rtl/mult_array.v
 vvp sim
-gtkwave mult.vcd
+gtkwave mult.vcd           # optional: view the waveform
 ```
 
-Result:
+**Expected output** (summary line):
 
 ```
 PASS: 256 vectors checked, 0 errors
 ```
 
-Error-injection check: `assign sum = a ^ b ^ cin;` in `rtl/full_adder.v` was temporarily
-changed to `assign sum = a ^ b;` and the same two commands were run:
+**Error-injection check.** In `rtl/full_adder.v` change `assign sum = a ^ b ^ cin;` to
+`assign sum = a ^ b;`, run the two commands above again, and you get:
 
 ```
 FAIL: 256 vectors checked, 95 errors
 ```
 
-The change was then undone and the testbench printed `PASS` again.
+Undo the change afterwards and check that the testbench prints `PASS` again.
 
-Hand-worked example: Gopal's roll number 2023112006 ends in 6, so A = 6 + 5 = 11 and B = 7.
-11 × 7 = 77 = `0100_1101`. In `mult.vcd` the inputs are applied at 5520 ns, captured at
-the 5525 ns clock edge and `p = 77` appears at the 5535 ns edge (see `report/report.pdf`).
+**Hand-worked example.** Gopal's roll number 2023112006 ends in 6, so A = 6 + 5 = 11 and B = 7.
+11 × 7 = 77 = `0100_1101`. In `mult.vcd` the inputs are applied at 5520 ns, captured at the
+5525 ns clock edge, and `p = 77` appears at the 5535 ns edge: a latency of 2 clock edges (see
+`report/report.pdf`).
 
-## Part B — Logic synthesis with Yosys
+## Part B : Synthesis with Yosys
+
+**Run**
 
 ```sh
 yosys -c synth/synth.tcl
 ```
 
-Gate-level netlist simulation:
+This rewrites `synth/mult_array_netlist.v` and `synth/mult_array_stat.rpt`.
+
+**Gate-level netlist simulation** (proves synthesis didn't change the behaviour):
 
 ```sh
 CELLS=$PDK_ROOT/sky130A/libs.ref/sky130_fd_sc_hd/verilog
@@ -63,6 +101,10 @@ iverilog -g2012 -DFUNCTIONAL -DUNIT_DELAY=#1 -o gls \
   tb/tb_mult.v $CELLS/primitives.v $CELLS/sky130_fd_sc_hd.v synth/mult_array_netlist.v
 vvp gls
 ```
+
+**Expected output:** `PASS: 256 vectors checked, 0 errors`
+
+**Results** (from `synth/mult_array_stat.rpt`)
 
 | Metric | Value |
 |--------|-------|
@@ -74,15 +116,22 @@ vvp gls
 | 3 most-used cell types | `dfrtp_1` × 16, `nand2_1` × 7, `and2_0` × 4 and `maj3_1` × 4 (tied) |
 | Netlist simulation result | `PASS: 256 vectors checked, 0 errors` |
 
-## Part C — Static timing analysis with OpenSTA
+## Part C : Static timing analysis with OpenSTA
 
-`sta/sta.tcl` uses T = 10 ns by default; the period can be overridden with `STA_PERIOD`.
+Run Part B first: STA reads `synth/mult_array_netlist.v`. The clock period defaults to 10 ns and
+can be changed with the `STA_PERIOD` environment variable.
+
+**Run**
 
 ```sh
-sta sta/sta.tcl                      # T = 10 ns -> worst slack 7.213 ns
-STA_PERIOD=2.79 sta sta/sta.tcl      # T = Tmin  -> worst slack 0.003 ns
-sta sta/sta.tcl                      # regenerate sta/mult_array_timing.rpt at T = 10 ns
+sta sta/sta.tcl                      # T = 10 ns   -> worst slack 7.213 ns
+STA_PERIOD=2.79 sta sta/sta.tcl      # T = Tmin    -> worst slack 0.003 ns (≈ 0)
+sta sta/sta.tcl                      # run at 10 ns again so sta/mult_array_timing.rpt is the 10 ns report
 ```
+
+Tmin = T − WNS = 10 − 7.213 = 2.787 ns, and Fmax = 1000 / Tmin.
+
+**Results**
 
 | Metric | Value |
 |--------|-------|
@@ -99,19 +148,42 @@ sta sta/sta.tcl                      # regenerate sta/mult_array_timing.rpt at T
 Cells on the critical path, in order: `dfrtp_1` → `clkinv_1` → `o311ai_0` → `a21oi_1` →
 `maj3_1` → `xnor3_1` → `maj3_1` → `maj3_1` → `xor3_1` → (`dfrtp_1` D pin).
 
-## Part D — Physical design with LibreLane
+## Part D : Place and route with LibreLane
+
+LibreLane reads the RTL directly (`VERILOG_FILES` in `pnr/config.json`). A run takes 5–15 minutes
+and creates `pnr/runs/RUN_<date>_<time>/`. That folder isn't committed because it is very large.
+
+**Run**
 
 ```sh
 cd pnr
-librelane config.json
-cp runs/<final run>/final/metrics.json metrics.json
-cp runs/<final run>/final/gds/mult_array.gds mult_array.gds
-klayout mult_array.gds
+librelane config.json                # or: python3 -m librelane config.json
 ```
 
-Every attempt (`CLOCK_PERIOD` = 1.2 × 2.787 = 3.344 ns, rounded up to 3.5 ns, then +0.5 ns
-per failed attempt). LibreLane signs off setup in all nine PVT corners; the worst one is
-always the slow-slow corner (`ss_100C_1v60`).
+**Copy the results** of the successful run into `pnr/`:
+
+```sh
+RUN=$(ls -d runs/RUN_* | tail -1)    # the newest run
+cp $RUN/final/metrics.json metrics.json
+cp $RUN/final/gds/mult_array.gds mult_array.gds
+```
+
+**Check the results**
+
+```sh
+python3 -c "import json; m = json.load(open('metrics.json')); \
+  [print(k, m[k]) for k in ['design__instance__count', 'design__core__area', 'design__die__area', \
+  'route__wirelength', 'timing__setup__ws', 'magic__drc_error__count', 'design__lvs_error__count']]"
+klayout mult_array.gds               # view the layout
+cd ..
+```
+
+**Goal:** 0 DRC errors, 0 LVS errors, setup slack ≥ 0. If setup fails, raise `CLOCK_PERIOD` in
+`pnr/config.json` by 0.5 ns and run again.
+
+**Every attempt.** The starting `CLOCK_PERIOD` was 1.2 × 2.787 = 3.344 ns, rounded up to 3.5 ns,
+then +0.5 ns after each failed attempt. LibreLane signs off setup in all nine PVT corners; the
+worst one was always the slow-slow corner (`ss_100C_1v60`).
 
 | Run | Run directory | CLOCK_PERIOD (ns) | Worst setup slack (ns) | tt-corner slack (ns) | DRC / LVS | Result |
 |-----|---------------|-------------------|------------------------|----------------------|-----------|--------|
@@ -128,6 +200,8 @@ always the slow-slow corner (`ss_100C_1v60`).
 
 `pnr/metrics.json` and `pnr/mult_array.gds` are copied from run 10.
 
+**Results**
+
 | Metric | Value |
 |--------|-------|
 | CLOCK_PERIOD used | 8.0 ns |
@@ -143,7 +217,8 @@ always the slow-slow corner (`ss_100C_1v60`).
 | DRC errors | 0 |
 | LVS errors | 0 |
 
-Layout screenshots (rendered with KLayout in batch mode):
+**Layout screenshots** for the report (whole die and zoomed view), rendered by KLayout in batch
+mode from the repository root:
 
 ```sh
 klayout -zz -r report/figs/layout_shots.py
@@ -152,9 +227,23 @@ klayout -zz -r report/figs/layout_shots.py
 ## Report
 
 `report/report.pdf` contains all result tables, the hand-worked example, the block diagram,
-the annotated waveform, the layout screenshots and the answers to the questions in Section 10.
-It is built from `report/report.typ`:
+the annotated waveform, the layout screenshots, the answers to the questions and the division of
+work. To rebuild it (needs [Typst](https://typst.app), runs on the host):
 
 ```sh
 cd report && typst compile report.typ report.pdf
+```
+
+## Run everything in one go
+
+From the repository root inside the container (after `sak-pdk sky130A`):
+
+```sh
+iverilog -g2012 -o sim tb/tb_mult.v rtl/full_adder.v rtl/mult_array.v && vvp sim | grep -E "PASS|FAIL"
+yosys -q -c synth/synth.tcl
+CELLS=$PDK_ROOT/sky130A/libs.ref/sky130_fd_sc_hd/verilog
+iverilog -g2012 -DFUNCTIONAL -DUNIT_DELAY=#1 -o gls \
+  tb/tb_mult.v $CELLS/primitives.v $CELLS/sky130_fd_sc_hd.v synth/mult_array_netlist.v && vvp gls | grep -E "PASS|FAIL"
+sta sta/sta.tcl
+(cd pnr && librelane config.json)
 ```
